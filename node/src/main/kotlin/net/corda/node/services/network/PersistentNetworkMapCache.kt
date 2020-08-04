@@ -201,8 +201,7 @@ open class PersistentNetworkMapCache(cacheFactory: NamedCacheFactory,
     private fun recursivelyUpdateNodes(nodeUpdates: List<Pair<NodeInfo, MapChange>>) {
         try {
             persistNodeUpdates(nodeUpdates)
-        }
-        catch (e: PersistenceException) {
+        } catch (e: PersistenceException) {
             if (nodeUpdates.isNotEmpty()) {
                 when {
                     nodeUpdates.size > 1 -> {

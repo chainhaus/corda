@@ -35,11 +35,11 @@ import net.corda.core.transactions.TransactionBuilder
 @InitiatingFlow
 @StartableByRPC
 class CreateBusinessNetworkFlow(
-        private val networkId: UniqueIdentifier = UniqueIdentifier(),
-        private val businessIdentity: BNIdentity? = null,
-        private val groupId: UniqueIdentifier = UniqueIdentifier(),
-        private val groupName: String? = null,
-        private val notary: Party? = null
+            private val networkId: UniqueIdentifier = UniqueIdentifier(),
+            private val businessIdentity: BNIdentity? = null,
+            private val groupId: UniqueIdentifier = UniqueIdentifier(),
+            private val groupName: String? = null,
+            private val notary: Party? = null
 ) : FlowLogic<SignedTransaction>() {
 
     /**
