@@ -54,9 +54,8 @@ fun NodeHandle.suspendMembership(membershipId: UniqueIdentifier, notary: Party? 
     return stx.tx.outputStates.single() as MembershipState
 }
 
-fun NodeHandle.revokeMembership(membershipId: UniqueIdentifier, notary: Party? = null): MembershipState {
+fun NodeHandle.revokeMembership(membershipId: UniqueIdentifier, notary: Party? = null) {
     val stx = rpc.startFlow(::RevokeMembershipFlow, membershipId, notary).returnValue.getOrThrow()
-    return stx.tx.outputStates.single() as MembershipState
 }
 
 fun NodeHandle.modifyRoles(membershipId: UniqueIdentifier, roles: Set<BNRole>, notary: Party? = null): MembershipState {
@@ -85,7 +84,6 @@ fun NodeHandle.modifyGroup(groupId: UniqueIdentifier, name: String? = null, part
     return stx.tx.outputStates.single() as GroupState
 }
 
-fun NodeHandle.deleteGroup(groupId: UniqueIdentifier, notary: Party? = null): GroupState {
+fun NodeHandle.deleteGroup(groupId: UniqueIdentifier, notary: Party? = null) {
     val stx = rpc.startFlow(::DeleteGroupFlow, groupId, notary).returnValue.getOrThrow()
-    return stx.tx.outputStates.single() as GroupState
 }

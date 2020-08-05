@@ -8,12 +8,18 @@ import net.corda.bn.states.MembershipState
 import net.corda.bn.states.MembershipStatus
 import net.corda.core.contracts.UniqueIdentifier
 import net.corda.core.identity.Party
+import net.corda.core.messaging.vaultTrackBy
 import net.corda.core.node.services.Vault
 import net.corda.testing.core.expect
 import net.corda.testing.core.expectEvents
+import net.corda.testing.core.parallel
+import net.corda.testing.core.sequence
+import net.corda.testing.driver.InProcess
 import net.corda.testing.driver.NodeHandle
 import rx.Observable
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 abstract class AbstractBusinessNetworksTest {
@@ -22,14 +28,17 @@ abstract class AbstractBusinessNetworksTest {
 
     protected fun createBusinessNetworkAndCheck(
             bnoNode: NodeHandle,
-            bnoVaultUpdates: VaultUpdates,
             networkId: UniqueIdentifier,
             businessIdentity: BNIdentity,
             groupId: UniqueIdentifier,
             groupName: String,
             notary: Party
     ): UniqueIdentifier {
-        val bnoMembershipId = bnoNode.createBusinessNetwork(
+        val bnoVaultUpdates = bnoNode.rpc.run {
+            VaultUpdates(vaultTrackBy<MembershipState>().updates, vaultTrackBy<GroupState>().updates)
+        }
+
+        val membershipId = bnoNode.createBusinessNetwork(
                 networkId,
                 businessIdentity,
                 groupId,
@@ -39,14 +48,32 @@ abstract class AbstractBusinessNetworksTest {
 
         bnoVaultUpdates.apply {
             membershipUpdates.expectEvents {
-                expect { update ->
-                    val membership = update.produced.single().state.data
-                    assertEquals(networkId.toString(), membership.networkId)
-                    assertEquals(bnoNode.identity(), membership.identity.cordaIdentity)
-                    assertEquals(businessIdentity, membership.identity.businessIdentity)
-                    assertEquals(MembershipStatus.ACTIVE, membership.status)
-                    assertEquals(setOf(BNORole()), membership.roles)
-                }
+                sequence(
+                        expect { update ->
+                            val membership = update.produced.single().state.data
+                            assertEquals(networkId.toString(), membership.networkId)
+                            assertEquals(bnoNode.identity(), membership.identity.cordaIdentity)
+                            assertEquals(businessIdentity, membership.identity.businessIdentity)
+                            assertEquals(MembershipStatus.PENDING, membership.status)
+                            assertEquals(emptySet(), membership.roles)
+                        },
+                        expect { update ->
+                            val membership = update.produced.single().state.data
+                            assertEquals(networkId.toString(), membership.networkId)
+                            assertEquals(bnoNode.identity(), membership.identity.cordaIdentity)
+                            assertEquals(businessIdentity, membership.identity.businessIdentity)
+                            assertEquals(MembershipStatus.ACTIVE, membership.status)
+                            assertEquals(emptySet(), membership.roles)
+                        },
+                        expect { update ->
+                            val membership = update.produced.single().state.data
+                            assertEquals(networkId.toString(), membership.networkId)
+                            assertEquals(bnoNode.identity(), membership.identity.cordaIdentity)
+                            assertEquals(businessIdentity, membership.identity.businessIdentity)
+                            assertEquals(MembershipStatus.ACTIVE, membership.status)
+                            assertEquals(setOf(BNORole()), membership.roles)
+                        }
+                )
             }
             groupUpdates.expectEvents {
                 expect { update ->
@@ -59,21 +86,25 @@ abstract class AbstractBusinessNetworksTest {
             }
         }
 
-        return bnoMembershipId
+        return membershipId
     }
 
     protected fun requestMembershipAndCheck(
             memberNode: NodeHandle,
-            bnoVaultUpdates: VaultUpdates,
-            membersVaultUpdates: List<VaultUpdates>,
-            authorisedParty: Party,
+            bnoNode: NodeHandle,
             networkId: String,
             businessIdentity: BNIdentity,
             notary: Party
-    ) {
-        memberNode.requestMembership(authorisedParty, networkId, businessIdentity, notary)
+    ): UniqueIdentifier {
+        val allVaultUpdates = listOf(bnoNode, memberNode).map { node ->
+            node.rpc.run {
+                VaultUpdates(vaultTrackBy<MembershipState>().updates, vaultTrackBy<GroupState>().updates)
+            }
+        }
 
-        (membersVaultUpdates + bnoVaultUpdates).forEach { vaultUpdates ->
+        val membershipId = memberNode.requestMembership(bnoNode.identity(), networkId, businessIdentity, notary).linearId
+
+        allVaultUpdates.forEach { vaultUpdates ->
             vaultUpdates.membershipUpdates.expectEvents {
                 expect { update ->
                     val membership = update.produced.single().state.data
@@ -85,18 +116,25 @@ abstract class AbstractBusinessNetworksTest {
                 }
             }
         }
+
+        return membershipId
     }
 
     protected fun activateMembershipAndCheck(
             bnoNode: NodeHandle,
-            bnoVaultUpdates: VaultUpdates,
-            membersVaultUpdates: List<VaultUpdates>,
+            memberNodes: List<NodeHandle>,
             membershipId: UniqueIdentifier,
             notary: Party
     ) {
+        val allVaultUpdates = (memberNodes + bnoNode).map { node ->
+            node.rpc.run {
+                VaultUpdates(vaultTrackBy<MembershipState>().updates, vaultTrackBy<GroupState>().updates)
+            }
+        }
+
         bnoNode.activateMembership(membershipId, notary)
 
-        (membersVaultUpdates + bnoVaultUpdates).forEach { vaultUpdates ->
+        allVaultUpdates.forEach { vaultUpdates ->
             vaultUpdates.membershipUpdates.expectEvents {
                 expect { update ->
                     val membership = update.produced.single().state.data
@@ -109,14 +147,19 @@ abstract class AbstractBusinessNetworksTest {
 
     protected fun suspendMembershipAndCheck(
             bnoNode: NodeHandle,
-            bnoVaultUpdates: VaultUpdates,
-            membersVaultUpdates: List<VaultUpdates>,
+            memberNodes: List<NodeHandle>,
             membershipId: UniqueIdentifier,
             notary: Party
     ) {
+        val allVaultUpdates = (memberNodes + bnoNode).map { node ->
+            node.rpc.run {
+                VaultUpdates(vaultTrackBy<MembershipState>().updates, vaultTrackBy<GroupState>().updates)
+            }
+        }
+
         bnoNode.suspendMembership(membershipId, notary)
 
-        (membersVaultUpdates + bnoVaultUpdates).forEach { vaultUpdates ->
+        allVaultUpdates.forEach { vaultUpdates ->
             vaultUpdates.membershipUpdates.expectEvents {
                 expect { update ->
                     val membership = update.produced.single().state.data
@@ -128,35 +171,39 @@ abstract class AbstractBusinessNetworksTest {
     }
 
     protected fun revokeMembershipAndCheck(
-            bnoNode: NodeHandle,
-            bnoVaultUpdates: VaultUpdates,
-            membersVaultUpdates: List<VaultUpdates>,
+            bnoNode: InProcess,
+            memberNodes: List<InProcess>,
             membershipId: UniqueIdentifier,
-            notary: Party
+            notary: Party,
+            networkId: String,
+            revokedParty: Party
     ) {
-        bnoNode.activateMembership(membershipId, notary)
+        bnoNode.revokeMembership(membershipId, notary)
 
-        (membersVaultUpdates + bnoVaultUpdates).forEach { vaultUpdates ->
-            vaultUpdates.membershipUpdates.expectEvents {
-                expect { update ->
-                    val membership = update.consumed.single().state.data
-                    assertEquals(membershipId, membership.linearId)
-                }
-            }
+        (memberNodes + bnoNode).forEach { node ->
+            val service = node.services.cordaService(DatabaseService::class.java)
+
+            assertNull(service.getMembership(membershipId))
+            assertTrue(service.getAllBusinessNetworkGroups(networkId).all { revokedParty !in it.state.data.participants })
         }
     }
 
     protected fun modifyRolesAndCheck(
             bnoNode: NodeHandle,
-            bnoVaultUpdates: VaultUpdates,
-            membersVaultUpdates: List<VaultUpdates>,
+            memberNodes: List<NodeHandle>,
             membershipId: UniqueIdentifier,
             roles: Set<BNRole>,
             notary: Party
     ) {
+        val allVaultUpdates = (memberNodes + bnoNode).map { node ->
+            node.rpc.run {
+                VaultUpdates(vaultTrackBy<MembershipState>().updates, vaultTrackBy<GroupState>().updates)
+            }
+        }
+
         bnoNode.modifyRoles(membershipId, roles, notary)
 
-        (membersVaultUpdates + bnoVaultUpdates).forEach { vaultUpdates ->
+        allVaultUpdates.forEach { vaultUpdates ->
             vaultUpdates.membershipUpdates.expectEvents {
                 expect { update ->
                     val membership = update.produced.single().state.data
@@ -169,15 +216,20 @@ abstract class AbstractBusinessNetworksTest {
 
     protected fun modifyBusinessIdentityAndCheck(
             bnoNode: NodeHandle,
-            bnoVaultUpdates: VaultUpdates,
-            membersVaultUpdates: List<VaultUpdates>,
+            memberNodes: List<NodeHandle>,
             membershipId: UniqueIdentifier,
             businessIdentity: BNIdentity,
             notary: Party
     ) {
+        val allVaultUpdates = (memberNodes + bnoNode).map { node ->
+            node.rpc.run {
+                VaultUpdates(vaultTrackBy<MembershipState>().updates, vaultTrackBy<GroupState>().updates)
+            }
+        }
+
         bnoNode.modifyBusinessIdentity(membershipId, businessIdentity, notary)
 
-        (membersVaultUpdates + bnoVaultUpdates).forEach { vaultUpdates ->
+        allVaultUpdates.forEach { vaultUpdates ->
             vaultUpdates.membershipUpdates.expectEvents {
                 expect { update ->
                     val membership = update.produced.single().state.data
@@ -189,9 +241,8 @@ abstract class AbstractBusinessNetworksTest {
     }
 
     protected fun createGroupAndCheck(
-            bnoNode: NodeHandle,
-            bnoVaultUpdates: VaultUpdates,
-            membersVaultUpdates: List<VaultUpdates>,
+            bnoNode: InProcess,
+            memberNodes: List<InProcess>,
             networkId: String,
             groupId: UniqueIdentifier,
             groupName: String,
@@ -201,30 +252,23 @@ abstract class AbstractBusinessNetworksTest {
     ) {
         bnoNode.createGroup(networkId, groupId, groupName, additionalParticipants, notary)
 
-        (membersVaultUpdates + bnoVaultUpdates).forEach { vaultUpdates ->
-            vaultUpdates.membershipUpdates.expectEvents {
-                expect { update ->
-                    val membership = update.produced.single().state.data
-                    assertEquals(businessIdentity, membership.identity.businessIdentity)
-                    assertEquals(membershipId, membership.linearId)
-                }
-            }
-            vaultUpdates.groupUpdates.expectEvents {
-                expect { update ->
-                    val group = update.produced.single().state.data
-                    assertEquals(networkId, group.networkId)
-                    assertEquals(groupName, group.name)
-                    assertEquals(groupId, group.linearId)
-                    assertEquals(expectedParticipants, group.participants.toSet())
-                }
+        (memberNodes + bnoNode).forEach { node ->
+            val service = node.services.cordaService(DatabaseService::class.java)
+
+            val group = service.getBusinessNetworkGroup(groupId)
+            assertNotNull(group)
+            group?.state?.data?.let {
+                assertEquals(networkId, it.networkId)
+                assertEquals(groupName, it.name)
+                assertEquals(groupId, it.linearId)
+                assertEquals(expectedParticipants, it.participants.toSet())
             }
         }
     }
 
     protected fun modifyGroupAndCheck(
-            bnoNode: NodeHandle,
-            bnoVaultUpdates: VaultUpdates,
-            membersVaultUpdates: List<VaultUpdates>,
+            bnoNode: InProcess,
+            memberNodes: List<InProcess>,
             groupId: UniqueIdentifier,
             name: String,
             participants: Set<UniqueIdentifier>,
@@ -233,47 +277,34 @@ abstract class AbstractBusinessNetworksTest {
     ) {
         bnoNode.modifyGroup(groupId, name, participants, notary)
 
-        (membersVaultUpdates + bnoVaultUpdates).forEach { vaultUpdates ->
-            vaultUpdates.membershipUpdates.expectEvents {
-                expect { update ->
-                    val membership = update.produced.single().state.data
-                    assertEquals(businessIdentity, membership.identity.businessIdentity)
-                    assertEquals(membershipId, membership.linearId)
-                }
-            }
-            vaultUpdates.groupUpdates.expectEvents {
-                expect { update ->
-                    val group = update.produced.single().state.data
-                    assertEquals(name, group.name)
-                    assertEquals(groupId, group.linearId)
-                    assertEquals(expectedParticipants, group.participants.toSet())
-                }
+        (memberNodes + bnoNode).forEach { node ->
+            val service = node.services.cordaService(DatabaseService::class.java)
+
+            val group = service.getBusinessNetworkGroup(groupId)
+            assertNotNull(group)
+            group?.state?.data?.let {
+                assertEquals(name, it.name)
+                assertEquals(groupId, it.linearId)
+                assertEquals(expectedParticipants, it.participants.toSet())
             }
         }
     }
 
     protected fun deleteGroupAndCheck(
-            bnoNode: NodeHandle,
-            bnoVaultUpdates: VaultUpdates,
-            membersVaultUpdates: List<VaultUpdates>,
+            bnoNode: InProcess,
+            memberNodes: List<InProcess>,
             groupId: UniqueIdentifier,
             notary: Party
     ) {
         bnoNode.deleteGroup(groupId, notary)
 
-        (membersVaultUpdates + bnoVaultUpdates).forEach { vaultUpdates ->
-            vaultUpdates.membershipUpdates.expectEvents {
-                expect { update ->
-                    val membership = update.produced.single().state.data
-                    assertEquals(businessIdentity, membership.identity.businessIdentity)
-                    assertEquals(membershipId, membership.linearId)
-                }
-            }
-            vaultUpdates.groupUpdates.expectEvents {
-                expect { update ->
-                    val group = update.consumed.single().state.data
-                    assertEquals(groupId, group.linearId)
-                }
+        (memberNodes + bnoNode).forEach { node ->
+            val service = node.services.cordaService(DatabaseService::class.java)
+
+            val group = service.getBusinessNetworkGroup(groupId)
+            assertNotNull(group)
+            group?.state?.data?.let {
+                assertEquals(groupId, it.linearId)
             }
         }
     }

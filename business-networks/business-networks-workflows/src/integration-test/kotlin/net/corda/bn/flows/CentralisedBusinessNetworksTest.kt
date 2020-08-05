@@ -19,7 +19,7 @@ data class MyIdentity(val name: String) : BNIdentity
 class CentralisedBusinessNetworksTest : AbstractBusinessNetworksTest() {
 
     companion object {
-        private const val NUMBER_OF_MEMBERS = 2
+        private const val NUMBER_OF_MEMBERS = 4
     }
 
     private val bnoIdentity = TestIdentity(CordaX500Name.parse("O=BNO,L=New York,C=US")).party
@@ -34,31 +34,44 @@ class CentralisedBusinessNetworksTest : AbstractBusinessNetworksTest() {
             val bnoNode = startNodes(listOf(bnoIdentity)).single()
             val memberNodes = startNodes(membersIdentities)
 
-            val bnoVaultUpdates = bnoNode.rpc.run {
-                VaultUpdates(vaultTrackBy<MembershipState>().updates, vaultTrackBy<GroupState>().updates)
-            }
-            val memberVaultUpdates = memberNodes.map { node ->
-                node.rpc.run {
-                    VaultUpdates(vaultTrackBy<MembershipState>().updates, vaultTrackBy<GroupState>().updates)
-                }
-            }
-
             val networkId = UniqueIdentifier()
-            val businessIdentity = MyIdentity("BNO")
+            val bnoBusinessIdentity = MyIdentity("BNO")
             val groupId = UniqueIdentifier()
             val groupName = "default-group"
-            val bnoMembershipId = createBusinessNetworkAndCheck(bnoNode, bnoVaultUpdates, networkId, businessIdentity, groupId, groupName, defaultNotaryIdentity)
+            val bnoMembershipId = createBusinessNetworkAndCheck(bnoNode, networkId, bnoBusinessIdentity, groupId, groupName, defaultNotaryIdentity)
 
-            val membershipIds = memberNodes.map {
-                it.requestMembership(bnoNode.identity(), networkId, null, defaultNotaryIdentity).linearId
-            }.toSet()
-            membershipIds.forEach { bnoNode.activateMembership(it, defaultNotaryIdentity) }
+            val membershipIds = memberNodes.mapIndexed { idx, node ->
+                val memberBusinessIdentity = MyIdentity("Member$idx")
+                val linearId = requestMembershipAndCheck(node, bnoNode, networkId.toString(), memberBusinessIdentity, defaultNotaryIdentity)
 
-            val group = bnoNode.services.cordaService(DatabaseService::class.java).getAllBusinessNetworkGroups(networkId).single()
-            bnoNode.modifyGroup(group.state.data.linearId, null, membershipIds + bnoMembershipId, defaultNotaryIdentity)
+                linearId to node
+            }.toMap()
 
-            membershipIds.forEach { bnoNode.suspendMembership(it, defaultNotaryIdentity) }
-            membershipIds.forEach { bnoNode.revokeMembership(it, defaultNotaryIdentity) }
+            membershipIds.forEach { (membershipId, node) ->
+                activateMembershipAndCheck(bnoNode, listOf(node), membershipId, defaultNotaryIdentity)
+            }
+
+            modifyGroupAndCheck(
+                    bnoNode,
+                    memberNodes,
+                    groupId,
+                    groupName,
+                    membershipIds.keys + bnoMembershipId,
+                    defaultNotaryIdentity,
+                    (memberNodes + bnoNode).map { it.identity() }.toSet()
+            )
+
+            val iterator = membershipIds.entries.iterator()
+            iterator.next().also { (membershipId, node) ->
+                suspendMembershipAndCheck(bnoNode, memberNodes, membershipId, defaultNotaryIdentity)
+                revokeMembershipAndCheck(bnoNode, memberNodes, membershipId, defaultNotaryIdentity, networkId.toString(), node.identity())
+            }
+            iterator.next().also { (membershipId, node) ->
+                revokeMembershipAndCheck(bnoNode, memberNodes.run { takeLast(size - 1) }, membershipId, defaultNotaryIdentity, networkId.toString(), node.identity())
+            }
+            iterator.next().also { (membershipId, _) ->
+                modifyBusinessIdentityAndCheck(bnoNode, memberNodes.run { takeLast(size - 2) }, membershipId, MyIdentity("SpecialMember"), defaultNotaryIdentity)
+            }
         }
     }
 }
