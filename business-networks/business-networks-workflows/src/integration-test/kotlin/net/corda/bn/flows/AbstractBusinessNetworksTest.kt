@@ -7,12 +7,14 @@ import net.corda.bn.states.GroupState
 import net.corda.bn.states.MembershipState
 import net.corda.bn.states.MembershipStatus
 import net.corda.core.contracts.UniqueIdentifier
+import net.corda.core.identity.CordaX500Name
 import net.corda.core.identity.Party
 import net.corda.core.messaging.vaultTrackBy
 import net.corda.core.node.services.Vault
+import net.corda.core.serialization.CordaSerializable
+import net.corda.testing.core.TestIdentity
 import net.corda.testing.core.expect
 import net.corda.testing.core.expectEvents
-import net.corda.testing.core.parallel
 import net.corda.testing.core.sequence
 import net.corda.testing.driver.InProcess
 import net.corda.testing.driver.NodeHandle
@@ -23,6 +25,16 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 abstract class AbstractBusinessNetworksTest {
+
+    companion object {
+        private const val NUMBER_OF_MEMBERS = 4
+    }
+
+    protected val bnoIdentity = TestIdentity(CordaX500Name.parse("O=BNO,L=New York,C=US")).party
+    protected val membersIdentities = (0..NUMBER_OF_MEMBERS).mapIndexed { idx, _ -> TestIdentity(CordaX500Name.parse("O=Member$idx,L=New York,C=US")).party }
+
+    @CordaSerializable
+    data class MyIdentity(val name: String) : BNIdentity
 
     data class VaultUpdates(val membershipUpdates: Observable<Vault.Update<MembershipState>>, val groupUpdates: Observable<Vault.Update<GroupState>>)
 
