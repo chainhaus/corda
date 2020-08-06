@@ -228,8 +228,12 @@ class FlowStateMachineImpl<R>(override val id: StateMachineRunId,
                 }
             }
         } finally {
-            checkDbTransaction(isDbTransactionOpenOnExit)
-            openThreadLocalWormhole()
+            try {
+                checkDbTransaction(isDbTransactionOpenOnExit)
+                openThreadLocalWormhole()
+            } catch(e: IllegalArgumentException) {
+                log.info("caught the transaction missing error hopefully the real error is shown")
+            }
         }
     }
 
