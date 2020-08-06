@@ -49,7 +49,9 @@ class DecentralisedBusinessNetworksTest : AbstractBusinessNetworksTest() {
                 modifyRolesAndCheck(bnoNode, memberNodes, membershipId, setOf(BNORole()), defaultNotaryIdentity)
             }
 
-            // more to come...
+            modifyBusinessIdentityAndCheck(memberNodes.first(), memberNodes + bnoNode, bnoMembershipId, MyIdentity("SpecialBNO"), defaultNotaryIdentity)
+
+            revokeMembershipAndCheck(memberNodes[1], memberNodes + bnoNode, bnoMembershipId, defaultNotaryIdentity, networkId.toString(), bnoNode.identity())
         }
     }
 }

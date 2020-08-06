@@ -59,7 +59,7 @@ abstract class AbstractBusinessNetworksTest {
         ).linearId
 
         bnoVaultUpdates.apply {
-            membershipUpdates.expectEvents {
+            membershipUpdates.expectEvents(isStrict = false) {
                 sequence(
                         expect { update ->
                             val membership = update.produced.single().state.data
@@ -87,7 +87,7 @@ abstract class AbstractBusinessNetworksTest {
                         }
                 )
             }
-            groupUpdates.expectEvents {
+            groupUpdates.expectEvents(isStrict = false) {
                 expect { update ->
                     val group = update.produced.single().state.data
                     assertEquals(networkId.toString(), group.networkId)
@@ -117,7 +117,7 @@ abstract class AbstractBusinessNetworksTest {
         val membershipId = memberNode.requestMembership(bnoNode.identity(), networkId, businessIdentity, notary).linearId
 
         allVaultUpdates.forEach { vaultUpdates ->
-            vaultUpdates.membershipUpdates.expectEvents {
+            vaultUpdates.membershipUpdates.expectEvents(isStrict = false) {
                 expect { update ->
                     val membership = update.produced.single().state.data
                     assertEquals(networkId, membership.networkId)
@@ -147,7 +147,7 @@ abstract class AbstractBusinessNetworksTest {
         bnoNode.activateMembership(membershipId, notary)
 
         allVaultUpdates.forEach { vaultUpdates ->
-            vaultUpdates.membershipUpdates.expectEvents {
+            vaultUpdates.membershipUpdates.expectEvents(isStrict = false) {
                 expect { update ->
                     val membership = update.produced.single().state.data
                     assertEquals(MembershipStatus.ACTIVE, membership.status)
@@ -172,7 +172,7 @@ abstract class AbstractBusinessNetworksTest {
         bnoNode.suspendMembership(membershipId, notary)
 
         allVaultUpdates.forEach { vaultUpdates ->
-            vaultUpdates.membershipUpdates.expectEvents {
+            vaultUpdates.membershipUpdates.expectEvents(isStrict = false) {
                 expect { update ->
                     val membership = update.produced.single().state.data
                     assertEquals(MembershipStatus.SUSPENDED, membership.status)
@@ -216,7 +216,7 @@ abstract class AbstractBusinessNetworksTest {
         bnoNode.modifyRoles(membershipId, roles, notary)
 
         allVaultUpdates.forEach { vaultUpdates ->
-            vaultUpdates.membershipUpdates.expectEvents {
+            vaultUpdates.membershipUpdates.expectEvents(isStrict = false) {
                 expect { update ->
                     val membership = update.produced.single().state.data
                     assertEquals(roles, membership.roles)
@@ -242,7 +242,7 @@ abstract class AbstractBusinessNetworksTest {
         bnoNode.modifyBusinessIdentity(membershipId, businessIdentity, notary)
 
         allVaultUpdates.forEach { vaultUpdates ->
-            vaultUpdates.membershipUpdates.expectEvents {
+            vaultUpdates.membershipUpdates.expectEvents(isStrict = false) {
                 expect { update ->
                     val membership = update.produced.single().state.data
                     assertEquals(businessIdentity, membership.identity.businessIdentity)

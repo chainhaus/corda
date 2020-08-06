@@ -35,7 +35,7 @@ class DatabaseService(private val serviceHub: ServiceHub) : SingletonSerializeAs
         val criteria = QueryCriteria.VaultQueryCriteria(Vault.StateStatus.ALL)
                 .and(membershipNetworkIdCriteria(networkId))
         val states = serviceHub.vaultService.queryBy<MembershipState>(criteria).states.map { it.state.data }
-        return states.any { it.identity.cordaIdentity == serviceHub.myInfo.legalIdentities.first() } && states.isNotEmpty()
+        return states.any { it.identity.cordaIdentity == ourIdentity } && states.isNotEmpty()
     }
 
     /**
