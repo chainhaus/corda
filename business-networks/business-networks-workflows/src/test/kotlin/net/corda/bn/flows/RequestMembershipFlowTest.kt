@@ -33,7 +33,7 @@ class RequestMembershipFlowTest : MembershipManagementFlowTest(numberOfAuthorise
 
         val membership = runRequestAndActivateMembershipFlows(regularMember, authorisedMember, networkId).tx.outputStates.single() as MembershipState
         runRevokeMembershipFlow(authorisedMember, membership.linearId)
-        assertFailsWith<MembershipNotFoundException> { runRequestMembershipFlow(regularMember, regularMember, networkId) }
+        assertFailsWith<BusinessNetworkNotFoundException> { runRequestMembershipFlow(regularMember, regularMember, networkId) }
 
         assertFailsWith<BusinessNetworkNotFoundException> { runRequestMembershipFlow(regularMember, authorisedMember, invalidNetworkId) }
     }
