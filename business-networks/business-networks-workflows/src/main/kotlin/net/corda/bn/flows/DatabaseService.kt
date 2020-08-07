@@ -34,8 +34,7 @@ class DatabaseService(private val serviceHub: ServiceHub) : SingletonSerializeAs
     fun businessNetworkExists(networkId: String): Boolean {
         val criteria = QueryCriteria.VaultQueryCriteria(Vault.StateStatus.ALL)
                 .and(membershipNetworkIdCriteria(networkId))
-        val states = serviceHub.vaultService.queryBy<MembershipState>(criteria).states.map { it.state.data }
-        return states.any { it.identity.cordaIdentity == ourIdentity } && states.isNotEmpty()
+        return serviceHub.vaultService.queryBy<MembershipState>(criteria).states.map { it.state.data }.isNotEmpty()
     }
 
     /**
@@ -55,7 +54,9 @@ class DatabaseService(private val serviceHub: ServiceHub) : SingletonSerializeAs
                 .and(membershipNetworkIdCriteria(networkId))
                 .and(identityCriteria(party))
         val states = serviceHub.vaultService.queryBy<MembershipState>(criteria).states
-        return states.maxBy { it.state.data.modified }
+        return states.maxBy { it.state.data.modified }?.run {
+            if (ourIdentity in state.data.participants) this else null
+        }
     }
 
     /**
@@ -70,8 +71,7 @@ class DatabaseService(private val serviceHub: ServiceHub) : SingletonSerializeAs
                 .and(linearIdCriteria(linearId))
         val states = serviceHub.vaultService.queryBy<MembershipState>(criteria).states
         return states.maxBy { it.state.data.modified }?.run {
-            val networkId = state.data.networkId
-            if (isBusinessNetworkMember(networkId, ourIdentity)) this else null
+            if (isBusinessNetworkMember(state.data.networkId, ourIdentity) && ourIdentity in state.data.participants) this else null
         }
     }
 
@@ -91,7 +91,9 @@ class DatabaseService(private val serviceHub: ServiceHub) : SingletonSerializeAs
         val criteria = QueryCriteria.VaultQueryCriteria(Vault.StateStatus.UNCONSUMED)
                 .and(membershipNetworkIdCriteria(networkId))
                 .and(statusCriteria(statuses.toList()))
-        return serviceHub.vaultService.queryBy<MembershipState>(criteria).states
+        return serviceHub.vaultService.queryBy<MembershipState>(criteria).states.filter {
+            ourIdentity in it.state.data.participants
+        }
     }
 
     /**
@@ -151,7 +153,9 @@ class DatabaseService(private val serviceHub: ServiceHub) : SingletonSerializeAs
 
         val criteria = QueryCriteria.VaultQueryCriteria(Vault.StateStatus.UNCONSUMED)
                 .and(groupNetworkIdCriteria(networkId))
-        return serviceHub.vaultService.queryBy<GroupState>(criteria).states
+        return serviceHub.vaultService.queryBy<GroupState>(criteria).states.filter {
+            ourIdentity in it.state.data.participants
+        }
     }
 
     private fun isBusinessNetworkMember(networkId: String, party: Party): Boolean {

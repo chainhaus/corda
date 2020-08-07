@@ -43,8 +43,7 @@ class DatabaseServiceTest : MembershipManagementFlowTest(numberOfAuthorisedMembe
         listOf(authorisedMemberService, regularMemberService).forEach { service -> assertTrue(service.businessNetworkExists(networkId)) }
 
         runRevokeMembershipFlow(authorisedMember, membership.linearId)
-        assertTrue(authorisedMemberService.businessNetworkExists(networkId))
-        assertFalse(regularMemberService.businessNetworkExists(networkId))
+        listOf(authorisedMemberService, regularMemberService).forEach { service -> assertTrue(service.businessNetworkExists(networkId)) }
     }
 
     @Test(timeout = 300_000)
